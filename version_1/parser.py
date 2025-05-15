@@ -1,5 +1,5 @@
 import pandas as pd
-from groups import groups, new_keys_in_groups, delete_mails, position
+from version_1.groups import groups, new_keys_in_groups, delete_mails, position
 import tqdm
 import re
 
@@ -48,23 +48,26 @@ def find_phones(text):
         r'''
         (?:
             (?:\+7|8)                # код страны
-            [\s\u00A0\-]*            # возможные пробелы/тире
+            [\s\u00A0\-]+            # ← теперь хотя бы один пробел/тире
             \(?\d{3,5}\)?            # код города
-            [\s\u00A0\-]*\d{2,3}    # первая часть номера
-            [\s\u00A0\-]*\d{2}       # вторая часть
-            [\s\u00A0\-]*\d{2,4}     # третья часть
-            (?:\s*(?:доб\.?|ext\.?)\s*\d{1,5})? # добавочный, опционально
+            [\s\u00A0\-]*\d{2,3}
+            [\s\u00A0\-]*\d{2}
+            [\s\u00A0\-]*\d{2,4}
+            (?:\s*(?:доб\.?|ext\.?)\s*\d{1,5})?
         )
         ''',
         re.VERBOSE
     )
 
-    # фильтруем по количеству цифр (не менее 10, чтобы отсечь тех. номера)
     phones = []
     for match in phone_pattern.finditer(text):
         number = match.group().strip()
         digits_only = re.sub(r'\D', '', number)
-        if 10 <= len(digits_only) <= 15:
+        # допфильтрация: длина и наличие хотя бы одного разделителя
+        if (
+            10 <= len(digits_only) <= 15
+            and re.search(r'[\s\-()]', number)  # ← есть хотя бы один разделитель
+        ):
             phones.append(number)
 
     return ' | '.join(set(phones))
@@ -121,6 +124,8 @@ df['Группа'], df['Определено по ключу'], df['Должно
     detect_group(sender, body)
     for sender, body in tqdm.tqdm(zip(df['sender'], df['body']), total=len(df), desc="Определение групп")
 ])
+
+df['Почта'] = df['sender'].str.split('<')[-1].str.replace('>', '').strip()
 
 df = df.rename({'sender': 'Отправитель', 'subject': 'Тема', 'body': 'Тело письма'}, axis='columns')
 df.to_excel('mail_parser.xlsx', index=False)
