@@ -1,6 +1,5 @@
 import mailbox
 from email.header import decode_header, make_header
-import stanza
 import pandas as pd
 import re
 
