@@ -4,6 +4,7 @@ import re
 from tqdm import tqdm
 tqdm.pandas()
 
+
 def extract_name_email(text):
     text = text.strip()
 
@@ -53,11 +54,13 @@ def find_phones(text):
         # допфильтрация: длина и наличие хотя бы одного разделителя
         if (
             10 <= len(digits_only) <= 15
-            and re.search(r'[\s\-()]', number)  # ← есть хотя бы один разделитель
+            # ← есть хотя бы один разделитель
+            and re.search(r'[\s\-()]', number)
         ):
             phones.append(number)
 
     return ' | '.join(set(phones))
+
 
 def find_position(position_list, text):
     if not isinstance(text, str):
@@ -66,9 +69,13 @@ def find_position(position_list, text):
     text = text.lower()
     for position, values in position_list.items():
         for v in values:
-            if v.lower() in text:
-                return position.lower()
-
+            v = v.lower()
+            if v == 'проект' and 'уважением' in text:
+                if v in text.split('уважением')[-1]:
+                    return position
+            elif v in text:
+                return position
+            
     return 'не определено'
 
 
@@ -109,15 +116,30 @@ def detect_group(sender, body):
         # По телу письма
         for keyword in v[2]:
             keyword = keyword.lower()
-            if keyword in ('мост', 'краска', 'краски', 'замок'): # ищем не по вхождению а по началу с
+            if keyword == 'мост':
                 pattern = rf"\b{re.escape(keyword)}"
                 pattern1 = rf"{re.escape(keyword)}\b"
                 if re.search(pattern, body) or re.search(pattern1, body):
+                    return k, keyword
+            elif keyword in ('краска', 'краски', 'замок'):
+                pattern = rf"\b{re.escape(keyword)}\b"
+                if re.search(pattern, body):
+                    return k, keyword
+            elif keyword == 'проект':
+                if not any([t in body for t in ['Руководитель проект', 'Менеджер проект']]):
+                    pattern = rf"\b{re.escape(keyword)}"
+                    pattern1 = rf"{re.escape(keyword)}\b"
+                    if re.search(pattern, body) or re.search(pattern1, body):
+                        return k, keyword
+            if keyword == 'строй':
+                pattern = rf"\b{re.escape(keyword)}"
+                if re.search(pattern, body):
                     return k, keyword
             elif keyword in body:
                 return k, keyword
 
     return 'группа не определена', ''
+
 
 def first_not_undefined(series):
     for val in series:
@@ -126,23 +148,26 @@ def first_not_undefined(series):
     return series.iloc[0]
 
 
-
-df = pd.read_excel('output.xlsx')
+df = pd.read_parquet('result.parquet')
 
 # Применяем функцию
 print('Определение группы')
-result = df.progress_apply(lambda row: detect_group(row['sender'], row['body']), axis=1)
+result = df.progress_apply(lambda row: detect_group(
+    row['sender'], row['body']), axis=1)
 df[['Группа', 'Ключ']] = pd.DataFrame(result.tolist(), index=df.index)
 
 print('Ищем номера телефонов')
 df['Телефон'] = df['body'].progress_apply(find_phones)
 
 print('Ищем должность')
-df['Должность'] = df['body'].progress_apply(lambda x: find_position(position_list, x))
+df['Должность'] = df['body'].progress_apply(
+    lambda x: find_position(position_list, x))
 
 print('Емаил и имя')
-df[['Имя', 'Почта']] = df['sender'].progress_apply(lambda x: pd.Series(extract_name_email(x)))
+df[['Имя', 'Почта']] = df['sender'].progress_apply(
+    lambda x: pd.Series(extract_name_email(x)))
 
+print('Почти готово')
 df_unique = df.groupby('Почта', dropna=False).agg({
     'Имя': 'first',
     'Группа': first_not_undefined,
@@ -152,4 +177,4 @@ df_unique = df.groupby('Почта', dropna=False).agg({
     'body': 'first'
 }).reset_index()
 
-df_unique.to_excel('mail_parser.xlsx', index=False)
+df_unique.to_excel('mail_parser_1.xlsx', index=False)

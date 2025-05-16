@@ -4,6 +4,8 @@ import pandas as pd
 import re
 import tqdm
 from bs4 import BeautifulSoup
+import os
+from email.utils import parsedate_to_datetime
 
 def clean_illegal_chars(x):
     if isinstance(x, str):
@@ -92,22 +94,43 @@ def get_data(mbox):
 
         body = extract_text_from_msg(msg)
 
+        # Получаем дату письма
+        try:
+            date_str = msg.get("Date", "")
+            # Преобразуем строку даты в datetime
+            date = parsedate_to_datetime(date_str) if date_str else None
+        except:
+            date = None
+
         row = {
             'sender': from_header,
             'subject': subject,
-            'body': body
+            'body': body,
+            'date': date
         }
         data.append(row)
     return data
 
-print(f'Чтение данных из файла...')
-mbox = mailbox.mbox('Inbox')
-df = pd.DataFrame(get_data(mbox))
+mbox_files = [rf'D:\data\enix_info\extracted\info@enix.ru\Inbox-{i}' for i in range(1, 8)]  # Inbox, Inbox1, ..., Inbox7
+
+all_data = []
+
+for filename in mbox_files:
+    if os.path.exists(filename):
+        print(f'Чтение данных из файла: {filename}')
+        mbox = mailbox.mbox(filename)
+        data = get_data(mbox)
+        all_data.extend(data)
+    else:
+        print(f'Файл не найден: {filename}')
+
+# Объединение всех данных
+df = pd.DataFrame(all_data)
 
 print('Удаление ненужных сообщений')
 df_clean = df[~df.apply(lambda row: delete_unnecessary_messages(row['body'], row['sender'], row['subject']), axis=1)]
 df_clean = df_clean.apply(lambda x: x.apply(clean_illegal_chars))
 
-
-df_clean.to_excel("output.xlsx", index=False)
-print('Данные записаны')
+# Сохраняем в parquet
+df_clean.to_parquet("output_last.parquet", index=False)
+print(f'Данные записаны в output.parquet — всего {len(df_clean)} писем')
