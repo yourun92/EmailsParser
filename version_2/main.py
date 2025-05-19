@@ -70,12 +70,15 @@ def find_position(position_list, text):
     for position, values in position_list.items():
         for v in values:
             v = v.lower()
-            if v == 'проект' and 'уважением' in text:
-                if v in text.split('уважением')[-1]:
-                    return position
+            if v == 'проект':
+                if any(i in text for i in ['уважением', 'пожеланиями']):
+                    regards = text.split('уважением' if 'уважением' in text else 'пожеланиями')[-1]
+                    pattern = rf"\b{re.escape(v)}\b"
+                    if re.search(pattern, regards):
+                        return position
             elif v in text:
                 return position
-            
+
     return 'не определено'
 
 
@@ -117,21 +120,18 @@ def detect_group(sender, body):
         for keyword in v[2]:
             keyword = keyword.lower()
             if keyword == 'мост':
-                pattern = rf"\b{re.escape(keyword)}"
-                pattern1 = rf"{re.escape(keyword)}\b"
-                if re.search(pattern, body) or re.search(pattern1, body):
+                pattern = r"\bмост\w*|\w*мост\b"
+                if re.search(pattern, body):
                     return k, keyword
             elif keyword in ('краска', 'краски', 'замок'):
                 pattern = rf"\b{re.escape(keyword)}\b"
                 if re.search(pattern, body):
                     return k, keyword
             elif keyword == 'проект':
-                if not any([t in body for t in ['Руководитель проект', 'Менеджер проект']]):
-                    pattern = rf"\b{re.escape(keyword)}"
-                    pattern1 = rf"{re.escape(keyword)}\b"
-                    if re.search(pattern, body) or re.search(pattern1, body):
-                        return k, keyword
-            if keyword == 'строй':
+                pattern = rf"\b{re.escape(keyword)}\b"
+                if re.search(pattern, body):
+                    return k, keyword
+            elif keyword == 'строй':
                 pattern = rf"\b{re.escape(keyword)}"
                 if re.search(pattern, body):
                     return k, keyword
