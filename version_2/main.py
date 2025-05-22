@@ -169,7 +169,7 @@ def first_not_undefined(series):
     return series.iloc[0]
 
 
-df = pd.read_parquet('result.parquet')
+df = pd.read_parquet('output_last_v2.parquet')
 
 # Применяем функцию
 print('Определение группы')
@@ -199,4 +199,4 @@ df_unique = df.groupby('Почта', dropna=False).agg({
     'body': 'first'
 }).reset_index()
 
-df_unique.to_excel('mail_parser_1.xlsx', index=False)
+df_unique.to_excel('mail_parser_2.xlsx', index=False)

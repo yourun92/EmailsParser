@@ -142,4 +142,4 @@ df_clean = df_clean.apply(lambda x: x.apply(clean_illegal_chars))
 
 # Сохраняем в parquet
 df_clean.to_parquet("output_last_v2.parquet", index=False)
-print(f'Данные записаны в output.parquet — всего {len(df_clean)} писем')
+print(f'Данные записаны в output_last_v2 — всего {len(df_clean)} писем')
