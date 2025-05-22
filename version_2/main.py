@@ -1,31 +1,57 @@
+from natasha import NewsEmbedding, NewsMorphTagger, Segmenter, Doc, NamesExtractor, MorphVocab, NewsNERTagger
 import pandas as pd
 from groups_to_filter import groups, position_list
 import re
 from tqdm import tqdm
 tqdm.pandas()
 
+embedding = NewsEmbedding()
+morph_tagger = NewsMorphTagger(embedding)
+ner_tagger = NewsNERTagger(embedding)
+segmenter = Segmenter()
 
-def extract_name_email(text):
-    text = text.strip()
+morph = MorphVocab()
+names_extractor = NamesExtractor(morph)
+
+
+def extract_name_email(sender, body):
+    sender = sender.strip()
 
     # 1) Если есть формат: Имя <почта>
-    match = re.match(r'^(.*?)\s*<([^>]+)>$', text)
+    match = re.match(r'^(.*?)\s*<([^>]+)>$', sender)
     if match:
-        name = match.group(1).strip()
+        names = extract_name_with_natasha(body) + [match.group(1).strip()]
+        name = max(names, key=len)
         email = match.group(2).strip()
         return name, email
 
     # 2) Если просто почта (содержит @)
-    match = re.search(r'[\w\.-]+@[\w\.-]+', text)
+    match = re.search(r'[\w\.-]+@[\w\.-]+', sender)
     if match:
         email = match.group(0)
-        # Попытка взять всё, что до почты как имя
-        name_part = text[:match.start()].strip()
-        name = name_part if name_part else None
+        names = extract_name_with_natasha(
+            body) + [sender[:match.start()].strip()]
+        name = max(names, key=len) if names else None
         return name, email
 
-    # 3) Если ничего не найдено, возвращаем None
     return '', ''
+
+
+def extract_name_with_natasha(text):
+    if not text:
+        return []
+    doc = Doc(text)
+    doc.segment(segmenter)
+    doc.tag_morph(morph_tagger)
+    doc.tag_ner(ner_tagger)
+
+    persons = []
+    for span in doc.spans:
+        if span.type == 'PER':
+            span.normalize(morph)
+            persons.append(span.normal)
+    return persons
+
 
 
 def find_phones(text):
@@ -34,29 +60,24 @@ def find_phones(text):
 
     phone_pattern = re.compile(
         r'''
+        (?:(?:тел\.?|моб\.?)\s*[:\-]?\s*)?  # необязательное "тел." или "моб."
         (?:
-            (?:\+7|8)                # код страны
-            [\s\u00A0\-]+            # ← теперь хотя бы один пробел/тире
-            \(?\d{3,5}\)?            # код города
-            [\s\u00A0\-]*\d{2,3}
-            [\s\u00A0\-]*\d{2}
-            [\s\u00A0\-]*\d{2,4}
-            (?:\s*(?:доб\.?|ext\.?)\s*\d{1,5})?
+            (?:\+7|8)                       # код страны
+            [\s\-()]*\d{3,5}               # код города (возможно в скобках)
+            [\s\-]*\d{2,3}                 # часть номера
+            [\s\-]*\d{2}                   # часть номера
+            [\s\-]*\d{2,4}                 # часть номера
+            (?:\s*(?:доб\.?|ext\.?)\s*\d{1,5})?  # добавочный номер
         )
         ''',
-        re.VERBOSE
+        re.VERBOSE | re.IGNORECASE
     )
 
     phones = []
     for match in phone_pattern.finditer(text):
         number = match.group().strip()
         digits_only = re.sub(r'\D', '', number)
-        # допфильтрация: длина и наличие хотя бы одного разделителя
-        if (
-            10 <= len(digits_only) <= 15
-            # ← есть хотя бы один разделитель
-            and re.search(r'[\s\-()]', number)
-        ):
+        if 10 <= len(digits_only) <= 15:
             phones.append(number)
 
     return ' | '.join(set(phones))
@@ -120,7 +141,7 @@ def detect_group(sender, body):
         for keyword in v[2]:
             keyword = keyword.lower()
             if keyword == 'мост':
-                pattern = r"\bмост\w*|\w*мост\b"
+                pattern = r'\bмост\w*|\w*мост\b'
                 if re.search(pattern, body):
                     return k, keyword
             elif keyword in ('краска', 'краски', 'замок'):
@@ -132,7 +153,7 @@ def detect_group(sender, body):
                 if re.search(pattern, body):
                     return k, keyword
             elif keyword == 'строй':
-                pattern = rf"\b{re.escape(keyword)}"
+                pattern = rf'\b{re.escape(keyword)}'
                 if re.search(pattern, body):
                     return k, keyword
             elif keyword in body:
@@ -160,12 +181,13 @@ print('Ищем номера телефонов')
 df['Телефон'] = df['body'].progress_apply(find_phones)
 
 print('Ищем должность')
-df['Должность'] = df['body'].progress_apply(
-    lambda x: find_position(position_list, x))
+df['Должность'] = df['body'].progress_apply(lambda x: find_position(position_list, x))
 
 print('Емаил и имя')
-df[['Имя', 'Почта']] = df['sender'].progress_apply(
-    lambda x: pd.Series(extract_name_email(x)))
+df[['Имя', 'Почта']] = df.progress_apply(
+    lambda row: pd.Series(extract_name_email(row['sender'], row['body'])),
+    axis=1
+)
 
 print('Почти готово')
 df_unique = df.groupby('Почта', dropna=False).agg({

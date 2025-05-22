@@ -1,3 +1,6 @@
 *.xlsx
 Inbox
 Inbox_my
+*.parquet
+*.ipynb
+*.csv

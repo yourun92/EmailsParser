@@ -1,3 +1,5 @@
 {
-    "commentTranslate.source": "Google"
+    "commentTranslate.source": "Google",
+    "python.formatting.provider": "black",
+    "editor.formatOnSave": true
 }

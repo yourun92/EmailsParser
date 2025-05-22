@@ -111,9 +111,18 @@ def get_data(mbox):
         data.append(row)
     return data
 
-mbox_files = [rf'D:\data\enix_info\extracted\info@enix.ru\Inbox-{i}' for i in range(1, 8)]  # Inbox, Inbox1, ..., Inbox7
+folder = r'D:\data\enix_info\extracted\info@enix.ru'
+
+# Собираем только .mbox-файлы, которые начинаются с Inbox и не заканчиваются на .msf
+mbox_files = [
+    os.path.join(folder, f)
+    for f in os.listdir(folder)
+    if f.startswith('Inbox') and not f.endswith('.msf') and os.path.isfile(os.path.join(folder, f))
+]
 
 all_data = []
+
+print("Найдено файлов:", len(mbox_files))
 
 for filename in mbox_files:
     if os.path.exists(filename):
@@ -132,5 +141,5 @@ df_clean = df[~df.apply(lambda row: delete_unnecessary_messages(row['body'], row
 df_clean = df_clean.apply(lambda x: x.apply(clean_illegal_chars))
 
 # Сохраняем в parquet
-df_clean.to_parquet("output_last.parquet", index=False)
+df_clean.to_parquet("output_last_v2.parquet", index=False)
 print(f'Данные записаны в output.parquet — всего {len(df_clean)} писем')
